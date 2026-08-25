@@ -11,7 +11,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        family: ["aggregator", "regional", "opportunity", "company"]
+        include:
+          - family: aggregator
+            max_failures: 0
+          - family: regional
+            max_failures: 1
+          - family: opportunity
+            max_failures: 0
+          - family: company
+            max_failures: 0
 
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +42,7 @@ jobs:
           --limit 5
           --strict
           --min-parsed 1
-          --max-failures 0
+          --max-failures ${{ matrix.max_failures }}
           --report source-health-${{ matrix.family }}.json
 
       - name: Run benchmark

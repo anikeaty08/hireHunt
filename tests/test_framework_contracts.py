@@ -267,6 +267,14 @@ class FrameworkContractTests(unittest.TestCase):
         issues = evaluate_validation_health(results, HealthThresholds(min_parsed=1, max_failures=0))
         self.assertTrue(any(issue.code == "parsed_below_minimum" for issue in issues))
 
+    def test_validation_health_tolerates_configured_failures(self):
+        results = [
+            SourceValidation(source="linkedin", status_code=200, fetched=True, parsed_count=5, sample_titles=["ok"]),
+            SourceValidation(source="naukri", status_code=0, fetched=False, parsed_count=0, error="no response"),
+        ]
+        issues = evaluate_validation_health(results, HealthThresholds(min_parsed=1, max_failures=1))
+        self.assertEqual(issues, [])
+
     def test_benchmark_health_flags_unexpected_completion(self):
         results = [
             SourceBenchmark(
@@ -279,6 +287,25 @@ class FrameworkContractTests(unittest.TestCase):
         ]
         issues = evaluate_benchmark_health(results, HealthThresholds(min_parsed=1))
         self.assertTrue(any(issue.code == "unexpected_completion" for issue in issues))
+
+    def test_benchmark_health_tolerates_configured_failures(self):
+        results = [
+            SourceBenchmark(
+                source="linkedin",
+                parsed_count=5,
+                completion=CompletionStatus.CAPPED,
+                completion_reason="results_wanted=5",
+            ),
+            SourceBenchmark(
+                source="naukri",
+                parsed_count=0,
+                completion=CompletionStatus.FAILED,
+                completion_reason="blocked",
+                error="blocked",
+            ),
+        ]
+        issues = evaluate_benchmark_health(results, HealthThresholds(min_parsed=1, max_failures=1))
+        self.assertEqual(issues, [])
 
 
 if __name__ == "__main__":

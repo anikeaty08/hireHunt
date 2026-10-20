@@ -181,7 +181,29 @@ def evaluate_validation_health(
     issues: list[HealthIssue] = []
     if not results:
         return [HealthIssue(source="*", code="no_sources_selected", message="validation selected no sources")]
-    failures = sum(1 for item in results if not item.ok)
+    failures = 0
+    deferred_issues: list[HealthIssue] = []
+    for item in results:
+        item_issues: list[HealthIssue] = []
+        if item.error:
+            item_issues.append(
+                HealthIssue(item.source, "fetch_error", item.error)
+            )
+        if item.parsed_count < thresholds.min_parsed:
+            item_issues.append(
+                HealthIssue(
+                    item.source,
+                    "parsed_below_minimum",
+                    f"parsed_count={item.parsed_count} < min_parsed={thresholds.min_parsed}",
+                )
+            )
+        if item.ok and not item.sample_titles:
+            item_issues.append(
+                HealthIssue(item.source, "missing_samples", "validation returned no sample titles")
+            )
+        if item_issues:
+            failures += 1
+            deferred_issues.extend(item_issues)
     if failures > thresholds.max_failures:
         issues.append(
             HealthIssue(
@@ -190,23 +212,7 @@ def evaluate_validation_health(
                 message=f"{failures} sources failed validation; allowed={thresholds.max_failures}",
             )
         )
-    for item in results:
-        if item.error:
-            issues.append(
-                HealthIssue(item.source, "fetch_error", item.error)
-            )
-        if item.parsed_count < thresholds.min_parsed:
-            issues.append(
-                HealthIssue(
-                    item.source,
-                    "parsed_below_minimum",
-                    f"parsed_count={item.parsed_count} < min_parsed={thresholds.min_parsed}",
-                )
-            )
-        if item.ok and not item.sample_titles:
-            issues.append(
-                HealthIssue(item.source, "missing_samples", "validation returned no sample titles")
-            )
+        issues.extend(deferred_issues)
     return issues
 
 
@@ -218,11 +224,14 @@ def evaluate_benchmark_health(
     issues: list[HealthIssue] = []
     if not results:
         return [HealthIssue(source="*", code="no_sources_selected", message="benchmark selected no sources")]
+    failures = 0
+    deferred_issues: list[HealthIssue] = []
     for item in results:
+        item_issues: list[HealthIssue] = []
         if item.error:
-            issues.append(HealthIssue(item.source, "benchmark_error", item.error))
+            item_issues.append(HealthIssue(item.source, "benchmark_error", item.error))
         if item.completion not in thresholds.allowed_completions:
-            issues.append(
+            item_issues.append(
                 HealthIssue(
                     item.source,
                     "unexpected_completion",
@@ -230,7 +239,7 @@ def evaluate_benchmark_health(
                 )
             )
         if item.parsed_count < thresholds.min_parsed:
-            issues.append(
+            item_issues.append(
                 HealthIssue(
                     item.source,
                     "parsed_below_minimum",
@@ -238,7 +247,7 @@ def evaluate_benchmark_health(
                 )
             )
         if thresholds.min_jobs_per_second > 0 and item.jobs_per_second < thresholds.min_jobs_per_second:
-            issues.append(
+            item_issues.append(
                 HealthIssue(
                     item.source,
                     "throughput_below_minimum",
@@ -246,13 +255,25 @@ def evaluate_benchmark_health(
                 )
             )
         if thresholds.max_requests > 0 and item.requests > thresholds.max_requests:
-            issues.append(
+            item_issues.append(
                 HealthIssue(
                     item.source,
                     "requests_above_maximum",
                     f"requests={item.requests} > max_requests={thresholds.max_requests}",
                 )
             )
+        if item_issues:
+            failures += 1
+            deferred_issues.extend(item_issues)
+    if failures > thresholds.max_failures:
+        issues.append(
+            HealthIssue(
+                source="*",
+                code="too_many_failures",
+                message=f"{failures} sources failed benchmark thresholds; allowed={thresholds.max_failures}",
+            )
+        )
+        issues.extend(deferred_issues)
     return issues
 
 
